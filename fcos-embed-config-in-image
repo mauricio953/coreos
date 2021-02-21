@@ -1,0 +1,88 @@
+#!/bin/env bash
+set -eo pipefail
+
+#
+# Part of a Fedora CoreOS blog post on my website:
+# https://www.matthiaspreu.com/posts/fedora-coreos-embed-ignition-config/
+#
+# Script modifies a FCOS virtual machine image and injects
+# an Ignition configuration in it.
+#
+# Use case: Scenarios where providing the Ingition configuration
+# with an external web server is not possible, no cloud
+# provider is used, but virtual machine images can still be utilized
+# to set up a server (e.g. using a regular server hosting provider).
+#
+# Initial user "matthias" with password "test" is configured for
+# demonstration purposes.
+#
+# This script actually runs the modfied virtual machine for demonstration
+# purposes and therefore the Ignition configuration process is triggered.
+# As Iginition is designed to only run once, users creating a modified VM
+# image for a real FCOS deployment should obviously exclude this step.
+# 
+
+# Generate password hash
+function generateHash () {
+    local hash="$(echo "test" | mkpasswd --method=SHA-512 --rounds=4096 -s)"
+    echo "$hash"
+}
+
+# Generate the FCC configuration file
+function generateFCC () {
+    local hash="$1"
+    cat << EOF > fcos.fcc
+    variant: fcos
+    version: 1.0.0
+    passwd:
+      users:
+      - name: matthias
+        password_hash: "$hash"
+        groups:
+        - wheel
+    storage:
+      files:
+      - path: /etc/hostname
+        overwrite: true
+        mode: 0644
+        contents:
+          inline: fcos-server-test
+EOF
+}
+
+# Download FCOS qcow2 image
+ARTEFACT="fedora-coreos-31.20200113.3.1-qemu.x86_64.qcow2.xz"
+IMAGENAME="fedora-coreos-31.20200113.3.1-qemu.x86_64.qcow2"
+if [ ! -f "$IMAGENAME" ]; then
+    curl -o $ARTEFACT https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/31.20200113.3.1/x86_64/$ARTEFACT
+    xz -v --decompress $ARTEFACT
+fi
+
+# Create a snapshot of the image to not modify original image
+rm fcos.qcow2 &>/dev/null || true 
+qemu-img create -f qcow2 -b fedora-coreos-31.20200113.3.1-qemu.x86_64.qcow2 fcos.qcow2
+
+# Generate the FCC configuration file
+generateFCC "$(generateHash)"
+
+# Generate Ignition file from FCC configuration
+podman run -i --rm quay.io/coreos/fcct:v0.2.0 -pretty -strict < fcos.fcc > config.ign
+
+# Inject configuration file into system image
+fs_boot_path=$(virt-filesystems -a fcos.qcow2 -l | grep boot | awk -F ' ' '{print $1}')
+config_file_path=./config.ign
+
+guestfish add fcos.qcow2 : \
+          run : \
+          mount "$fs_boot_path" / : \
+          mkdir /ignition : \
+          copy-in "$config_file_path" /ignition/ : \
+          unmount-all : \
+          exit
+
+# Launch VM using qemu
+qemu-system-x86_64 -machine accel=kvm \
+                   -m 2048 -cpu host -nographic \
+                   -device virtio-rng-pci \
+                   -device virtio-scsi-pci,id=scsi \
+                   -drive file=fcos.qcow2,if=none,id=hd0 -device scsi-hd,drive=hd0 
