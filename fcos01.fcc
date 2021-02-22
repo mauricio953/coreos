@@ -1,0 +1,38 @@
+variant: fcos
+version: 1.0.0
+passwd:
+  users:
+    - name: core
+      password_hash: "$6$saltsalt$qFmFH.bQmmtXzyBY0s9v7Oicd2z4XSIecDzlB5KiA2/jctKu9YterLp8wwnSq.qc.eoxqOmSuNp2xS0ktL3nh/"
+      groups:
+        - docker
+systemd:
+  units:
+    - name: install-rpms.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Install packages
+        ConditionFirstBoot=yes
+        Wants=network-online.target
+        After=network-online.target
+        After=multi-user.target
+        [Service]
+        Type=oneshot
+        ExecStart=rpm-ostree install nano git docker-compose htop --reboot
+        [Install]
+        WantedBy=multi-user.target
+storage:
+  files:
+    - path: /etc/ssh/sshd_config.d/20-enable-passwords.conf
+      mode: 0644
+      contents:
+        inline: |
+          # Fedora CoreOS disables SSH password login by default.
+          # Enable it.
+          # This file must sort before 40-disable-passwords.conf.
+          PasswordAuthentication yes
+    - path: /etc/hostname
+      mode: 0644
+      contents:
+        inline: fcos01.localdomain.local
