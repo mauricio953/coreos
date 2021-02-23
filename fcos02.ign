@@ -1,0 +1,59 @@
+{
+  "ignition": {
+    "version": "3.2.0"
+  },
+  "passwd": {
+    "users": [
+      {
+        "groups": [
+          "docker",
+          "wheel",
+          "sudo"
+        ],
+        "name": "core",
+        "passwordHash": "$6$saltsalt$qFmFH.bQmmtXzyBY0s9v7Oicd2z4XSIecDzlB5KiA2/jctKu9YterLp8wwnSq.qc.eoxqOmSuNp2xS0ktL3nh/"
+      }
+    ]
+  },
+  "storage": {
+    "files": [
+      {
+        "path": "/etc/sysctl.d/20-silence-audit.conf",
+        "contents": {
+          "source": "data:,kernel.printk%3D4%0A"
+        }
+      },
+      {
+        "path": "/etc/ssh/sshd_config.d/20-enable-passwords.conf",
+        "contents": {
+          "source": "data:,%23%20Fedora%20CoreOS%20disables%20SSH%20password%20login%20by%20default.%0A%23%20Enable%20it.%0A%23%20This%20file%20must%20sort%20before%2040-disable-passwords.conf.%0APasswordAuthentication%20yes%0A"
+        },
+        "mode": 420
+      },
+      {
+        "path": "/etc/hostname",
+        "contents": {
+          "source": "data:,fcos01.localdomain.local"
+        },
+        "mode": 420
+      },
+      {
+        "overwrite": true,
+        "path": "/etc/NetworkManager/system-connections/enp1s0.nmconnection",
+        "contents": {
+          "source": "data:,%5Bconnection%5D%0Atype%3Dethernet%0Aid%3D%22Wired%20connection%201%22%0Ainterface-name%3Denp0s3%0A%0A%5Bipv4%5D%0Amethod%3Dmanual%0Aaddresses%3D10.0.3.3%2F24%0Agateway%3D10.0.3.1%0Adns%3D10.0.3.1%3B8.8.8.8%0A"
+        },
+        "mode": 384
+      }
+    ]
+  },
+  "systemd": {
+    "units": [
+      {
+        "contents": "[Unit]\nDescription=Install packages\nConditionFirstBoot=yes\nWants=network-online.target\nAfter=network-online.target\nAfter=multi-user.target\n[Service]\nType=oneshot\nExecStart=rpm-ostree install nano git docker-compose htop --reboot\n[Install]\nWantedBy=multi-user.target\n",
+        "enabled": true,
+        "name": "install-rpms.service"
+      }
+    ]
+  }
+}
